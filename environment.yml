@@ -1,0 +1,64 @@
+name: Dock-MD-FEP
+channels:
+  - conda-forge
+dependencies:
+  # Core FEP: OpenFE replaces Yank
+  - openfe >=1.11,<2.0
+
+  # AmberTools for antechamber and tleap
+  - ambertools >=24
+
+  # Structure handling
+  - rdkit
+  - openbabel
+  - pdbfixer
+  - py3dmol
+
+  # Trajectory analysis
+  - mdtraj
+  - mdanalysis
+  - pytraj
+  - parmed
+
+  # MD setup
+  - packmol
+
+  # Scientific stack
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib-base
+  - seaborn
+  - tqdm
+
+  # Python
+  - python >=3.12,<3.13
+
+  # pip-only
+  - pip
+  - pip:
+      - pdb4amber
+      - mmpbsa-py
+
+  # ═══════════════════════════════════════════════════════════════
+  # OpenMM 8.5.1 — IMPORTANT: source build on Blackwell GPUs
+  # ═══════════════════════════════════════════════════════════════
+  # The conda-forge / pip pre-built OpenMM wheels do not include
+  # PTX for compute capability 12.0 (Blackwell architecture).
+  # On NVIDIA RTX PRO 6000 Blackwell and similar GPUs, OpenMM
+  # must be built from source with the local nvcc.  See README.md
+  # § "Building OpenMM from source (Blackwell GPUs)" for the
+  # full procedure.
+  #
+  # After the source build the env will contain:
+  #   OpenMM          8.5.1    (pip show openmm)
+  #   OpenMMCUDA      8.5.1    (libOpenMMCUDA.so)
+  #   OpenMMCPU       8.5.1
+  #   OpenMMPME       8.5.1
+  #   OpenMMAmoeba    8.5.1
+  #   OpenMMRPMD      8.5.1
+  #   OpenMMDrude     8.5.1
+  #
+  # Verified on: Ubuntu 22.04, CUDA 12.8, GCC 11.4, SWIG 4.0.2
+  # Build date : 2026-05-31
+  # ═══════════════════════════════════════════════════════════════
