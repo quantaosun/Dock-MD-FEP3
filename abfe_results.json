@@ -1,0 +1,9 @@
+{
+  "dg_kT": -12.98817050410917,
+  "dg_kcal_per_mol": -7.740949620449065,
+  "dg_error_kT": 0.8670528566367925,
+  "dg_error_kcal_per_mol": 0.5167635025555284,
+  "temperature_K": 300.0,
+  "platform": "CUDA",
+  "n_repeats": 3
+}

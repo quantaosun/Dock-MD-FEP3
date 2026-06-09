@@ -2,6 +2,8 @@
 """
 Absolute Binding Free Energy (ABFE) calculation using OpenFE.
 
+Replaces the legacy Yank-based FEP workflow (Stage 3) in Dock-MD-FEP.
+
 Usage
 -----
   conda activate Dock-MD-FEP
@@ -12,7 +14,7 @@ Expects in the working directory (produced by 01_prepare_inputs.py):
   ligand.sdf    — small molecule with correct element types
 """
 
-import json, os, sys, time, shutil, math, logging, tempfile
+import json, os, sys, time, shutil, logging
 from pathlib import Path
 
 from gufe.protocols import execute_DAG
@@ -50,7 +52,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ── simulation parameters ──────────────────────────────────────────
-N_REPEATS = 1
+N_REPEATS = 3
 TEMPERATURE = 300.0 * offunit.kelvin
 PLATFORM = "CUDA"
 
@@ -85,7 +87,7 @@ def load_ligand(sdf_path):
 
 
 def build_settings():
-    """Build AbsoluteBindingSettings."""
+    """Build AbsoluteBindingSettings, mirroring the original Yank setup."""
     s = openmm_afe.AbsoluteBindingProtocol.default_settings()
 
     # ── force fields: ff14SB + GAFF2 ───────────────────────────────
@@ -110,7 +112,7 @@ def build_settings():
     # ── lambda schedules (use OpenFE defaults, direction is 0→1) ──
     # OpenFE convention: 0 = fully interacting (state A),
     #                    1 = fully decoupled/annihilated (state B)
-    # 0 = fully interacting, 1 = fully decoupled.
+    # This is the REVERSE of Yank's convention.
 
     # ── alchemical ─────────────────────────────────────────────────
     s.alchemical_settings = AlchemicalSettings(annihilate_sterics=False)
@@ -143,7 +145,7 @@ def build_settings():
         equilibration_length=0.5 * offunit.nanosecond,
         production_length=0.5 * offunit.nanosecond,
         time_per_iteration=2.5 * offunit.picosecond,
-        early_termination_target_error=0.06 * offunit.kilocalorie_per_mole,
+        early_termination_target_error=0.20 * offunit.kilocalorie_per_mole,
         real_time_analysis_interval=50.0 * offunit.picosecond,
         n_replicas=n_complex,
     )
@@ -151,7 +153,7 @@ def build_settings():
         equilibration_length=0.5 * offunit.nanosecond,
         production_length=0.5 * offunit.nanosecond,
         time_per_iteration=2.5 * offunit.picosecond,
-        early_termination_target_error=0.06 * offunit.kilocalorie_per_mole,
+        early_termination_target_error=0.20 * offunit.kilocalorie_per_mole,
         real_time_analysis_interval=50.0 * offunit.picosecond,
         n_replicas=n_solvent,
     )
@@ -257,37 +259,27 @@ def main():
             dg_estimate = prot_result.get_estimate()
             dg_uncertainty = prot_result.get_uncertainty()
 
-            dg_kT = dg_estimate.magnitude
-            dg_err_kT = dg_uncertainty.magnitude
+            kT = dg_estimate.magnitude
+            kT_err = dg_uncertainty.magnitude
 
             # kT at 300 K = 0.596 kcal/mol
             kT_per_kcal = 0.596
-            dg_kcal = dg_kT * kT_per_kcal
-            dg_err_kcal = dg_err_kT * kT_per_kcal
+            dg_kcal = kT * kT_per_kcal
+            dg_err_kcal = kT_err * kT_per_kcal
 
-            # Standard state correction ΔG° = ΔG* + RT ln(C° V°)
-            # where C° = 1 M, V° = 1661 Å³ → RT ln(C° V°) ≈ 2.38 kcal/mol at 300K
-            # Actually: ΔG° = ΔG* - RT ln(V_std / V°_binding)
-            # Standard state correction (1 M → 1 molecule / 1661 Å³):
-            # ΔG° = ΔG* - RT ln(1661 * 6.022e-4)
-            R = 0.001987  # kcal/(mol·K)
-            T = 300.0
-            std_correction = -(R * T) * math.log(1661.0 * 6.022e-4)
+            # NOTE: dg_estimate from get_estimate() is already the fully
+            # corrected ΔG°, including the Boresch standard state correction.
+            # The correction is applied internally by OpenFE (see
+            # AbsoluteBindingProtocolResult.get_estimate()).
 
-            dg_std = dg_kcal + std_correction
-
-            log.info("\n  ΔG* (kT)        = %.3f ± %.3f kT", dg_kT, dg_err_kT)
-            log.info("  ΔG* (kcal/mol)  = %.3f ± %.3f kcal/mol", dg_kcal, dg_err_kcal)
-            log.info("  Std state corr  = %.3f kcal/mol", std_correction)
-            log.info("  ΔG° (kcal/mol)  = %.3f kcal/mol", dg_std)
+            log.info("\n  ΔG° (kT)       = %.3f ± %.3f kT", kT, kT_err)
+            log.info("  ΔG° (kcal/mol) = %.3f ± %.3f kcal/mol", dg_kcal, dg_err_kcal)
 
             summary = {
-                "dg_kT": dg_kT,
+                "dg_kT": kT,
                 "dg_kcal_per_mol": dg_kcal,
-                "dg_error_kT": dg_err_kT,
+                "dg_error_kT": kT_err,
                 "dg_error_kcal_per_mol": dg_err_kcal,
-                "standard_state_correction_kcal_per_mol": std_correction,
-                "dg_0_kcal_per_mol": dg_std,
                 "temperature_K": 300.0,
                 "platform": PLATFORM,
                 "n_repeats": N_REPEATS,
